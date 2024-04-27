@@ -55,24 +55,36 @@ module tight_acc_iface (
     input  wire [`DCP_NOC_RES_DATA_SIZE-1:0] mem_resp_data //up to 64Bytes
 );
 
-// Opcode of interest
 parameter CMD_OPCODE = 6'b000000;
+parameter SIZE = 64;
 
-// States of FSM
-typedef enum logic [1:0] {
-    IDLE,
-    COMPUTING,
-    RESPONDING
-} State;
-
-// Internal signals
 reg [1:0] state;
-reg [63:0] input;
 reg [63:0] output;
+reg [63:0] input_A; // Input element of matrix A
+reg [63:0] input_B; // Input element of matrix B
+reg [63:0] matrix_A [0:63][0:63]; // Matrix A
+reg [63:0] matrix_B [0:63][0:63]; // Matrix B
+reg [63:0] result [0:63][0:63];   // Result matrix
 reg valid;
+wire multiplier_start;
+wire multiplier_done;
+
+// Matrix multiplication module instance
+MatrixMultiplier multiplier_inst (
+    .clk(clk),
+    .start(multiplier_start),
+    .matrix_A(matrix_A),
+    .matrix_B(matrix_B),
+    .result(result),
+    .done(multiplier_done)
+);
+
+integer row_index; // Index for the current row of the matrix being filled
+integer col_index; // Index for the current column of the matrix being filled
+integer resp_row;  // Index for the current row of the response
+integer resp_col;  // Index for the current column of the response
 
 always @(posedge clk or negedge rst_n) begin
-    // reset
     if (rst_n) begin
         state <= IDLE;
         busy <= 1'b0;
@@ -83,30 +95,70 @@ always @(posedge clk or negedge rst_n) begin
         case (state)
             IDLE:
                 if (cmd_val && (cmd_opcode == CMD_OPCODE)) begin
-                    state <= COMPUTING;
-                    input <= cmd_config_data;
+                    input_A <= cmd_config_data;
+                    // Start filling matrix A
+                    row_index <= 0;
+                    col_index <= 0;
+                    state <= FILLING_A;
                     busy <= 1'b1;
                 end
-            COMPUTING:
+            FILLING_A:
                 begin
-                    // REPLACE WITH ACTUAL ACCELERATOR
-                    output <= $sqrt(input);
-                    valid <= 1'b1;
-                    state <= RESPONDING;
+                    // Fill matrix_A with input data for matrix A
+                    matrix_A[row_index][col_index] <= input_A;
+                    col_index <= col_index + 1;
+                    if (col_index == SIZE) begin
+                        col_index <= 0;
+                        row_index <= row_index + 1;
+                        if (row_index == SIZE) begin
+                            // Reset indices for matrix B
+                            row_index <= 0;
+                            col_index <= 0;
+                            // Move to fill matrix B
+                            input_B <= cmd_config_data;
+                            state <= FILLING_B;
+                        end
+                    end
+                    input_A <= cmd_config_data;
+                end
+            FILLING_B:
+                begin
+                    matrix_B[row_index][col_index] <= input_B;
+                    col_index <= col_index + 1;
+                    if (col_index == SIZE) begin
+                        col_index <= 0;
+                        row_index <= row_index + 1;
+                        if (row_index == SIZE) begin
+                          // Start matrix multiplication computation
+                          multiplier_start <= 1;
+                          state <= RESPONDING;
+                          resp_row <= 0; // Initialize response row index
+                          resp_col <= 0; // Initialize response column index
+                        end
+                    end
+                    input_B <= cmd_config_data;
                 end
             RESPONDING:
-                if (resp_rdy) begin
-                    resp_val <= 1'b1;
-                    resp_data <= output;
-                    valid <= 1'b0;
-                    state <= IDLE;
-                    busy <= 1'b0;
+                begin
+                    if (multiplier_done && resp_rdy) begin
+                        // Send the entire result matrix
+                        resp_val <= 1'b1;
+                        resp_data <= result[resp_row][resp_col];
+                        valid <= 1'b1;
+                        resp_col <= resp_col + 1;
+                        if (resp_col == SIZE) begin
+                            resp_col <= 0;
+                            resp_row <= resp_row + 1;
+                        end
+                        // If all elements are sent, transition back to IDLE
+                        if ((resp_row == SIZE) && (resp_col == 0)) begin
+                            state <= IDLE;
+                            busy <= 1'b0;
+                        end
+                    end
                 end
         endcase
     end
 end
-
-assign resp_val = valid;
-assign resp_data = output;
 
 endmodule
