@@ -72,6 +72,7 @@ reg [63:0] output;
 reg valid;
 
 always @(posedge clk or negedge rst_n) begin
+    // reset
     if (rst_n) begin
         state <= IDLE;
         busy <= 1'b0;
