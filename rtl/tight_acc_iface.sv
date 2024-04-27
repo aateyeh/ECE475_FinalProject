@@ -56,7 +56,7 @@ module tight_acc_iface (
 );
 
 // Opcode of interest
-parameter CMD_OPCODE = 6'b000001;
+parameter CMD_OPCODE = 6'b000000;
 
 // States of FSM
 typedef enum logic [1:0] {
