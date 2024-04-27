@@ -55,13 +55,57 @@ module tight_acc_iface (
     input  wire [`DCP_NOC_RES_DATA_SIZE-1:0] mem_resp_data //up to 64Bytes
 );
 
-// FILL ME
-assign busy = 1'b0;
-assign mem_req_val = 1'b0;
-assign mem_req_transid = 6'b0;
-assign mem_req_addr = 40'd0;
-// FOO implementation, respond untouched every command
-assign resp_val = cmd_val;
-assign resp_data = cmd_config_data;
+// Opcode of interest
+parameter CMD_OPCODE = 6'b000001;
+
+// States of FSM
+typedef enum logic [1:0] {
+    IDLE,
+    COMPUTING,
+    RESPONDING
+} State;
+
+// Internal signals
+reg [1:0] state;
+reg [63:0] input;
+reg [63:0] output;
+reg valid;
+
+always @(posedge clk or negedge rst_n) begin
+    if (rst_n) begin
+        state <= IDLE;
+        busy <= 1'b0;
+        valid <= 1'b0;
+        resp_val <= 1'b0;
+        resp_data <= 64'd0;
+    end else begin
+        case (state)
+            IDLE:
+                if (cmd_val && (cmd_opcode == CMD_OPCODE)) begin
+                    state <= COMPUTING;
+                    input <= cmd_config_data;
+                    busy <= 1'b1;
+                end
+            COMPUTING:
+                begin
+                    // REPLACE WITH ACTUAL ACCELERATOR
+                    output <= $sqrt(input);
+                    valid <= 1'b1;
+                    state <= RESPONDING;
+                end
+            RESPONDING:
+                if (resp_rdy) begin
+                    resp_val <= 1'b1;
+                    resp_data <= output;
+                    valid <= 1'b0;
+                    state <= IDLE;
+                    busy <= 1'b0;
+                end
+        endcase
+    end
+end
+
+assign resp_val = valid;
+assign resp_data = output;
 
 endmodule
