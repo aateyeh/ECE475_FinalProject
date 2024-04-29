@@ -29,48 +29,48 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 `default_nettype none
 `endif
 
-module tight_acc_iface (
-    input  wire clk,
-    input  wire rst_n,
-    // Command iface to receive "instructions" and configurations
-    input  wire                             cmd_val,        // New valid command
-    output wire                             busy,           // effectively behaves as cmd_rdy
-    input  wire [5:0]                       cmd_opcode,     // Command operation code, 64 values
-    input  wire [63:0]                      cmd_config_data, // Payload of command if needed
+module tight_acc_iface(
+    input wire clk,
+    input wire rst_n,
+    // Command interface to receive "instructions" and configurations
+    input wire cmd_val,               // New valid command
+    output reg busy,                  // Effectively behaves as cmd_rdy
+    input wire [5:0] cmd_opcode,      // Command operation code, 64 values
+    input wire [63:0] cmd_config_data, // Payload of command if needed
 
     // Interface to respond to the core after the accelerator has processed data
-    output wire                             resp_val,
-    input  wire                             resp_rdy, //whether the core is ready to take the data
-    output wire [63:0]                      resp_data,
+    output reg resp_val,
+    input wire resp_rdy,              // Whether the core is ready to take the data
+    output reg [63:0] resp_data,
 
-    // Request iface to memory hierarchy
-    input  wire                             mem_req_rdy, //whether the network is ready to take the request
-    output wire                             mem_req_val,
-    output wire [5:0]                       mem_req_transid, //can have up to 64 inflight requests
-    output wire [`DCP_PADDR_MASK       ]    mem_req_addr, // physical memory addr
+    // Request interface to memory hierarchy
+    input wire mem_req_rdy,           // Whether the network is ready to take the request
+    output wire mem_req_val,
+    output wire [5:0] mem_req_transid, // Can have up to 64 inflight requests
+    output wire [`DCP_PADDR_MASK] mem_req_addr, // Physical memory address
 
-    // Response iface from memory hierarchy (L2 shared cache)
-    input  wire                              mem_resp_val,
-    input  wire [5:0]                        mem_resp_transid, // up to 64 outstanding requests 
-    input  wire [`DCP_NOC_RES_DATA_SIZE-1:0] mem_resp_data //up to 64Bytes
+    // Response interface from memory hierarchy (L2 shared cache)
+    input wire mem_resp_val,
+    input wire [5:0] mem_resp_transid, // Up to 64 outstanding requests
+    input wire [`DCP_NOC_RES_DATA_SIZE-1:0] mem_resp_data // Up to 64 Bytes
 );
 
-parameter CMD_OPCODE = 6'b000000;
-parameter SIZE = 64;
+// Command opcodes
+parameter CMD_MULT =  6'b000001;  // Command to load matrices and start multiplication
+parameter CMD_FILLA = 6'b000010;  // Command to read results
+parameter CMD_FILLB = 6'b000011;  // Command to read results
+parameter CMD_READ =  6'b000100;  // Command to read results
 
-reg [1:0] state;
-reg [63:0] output;
-reg [63:0] input_A; // Input element of matrix A
-reg [63:0] input_B; // Input element of matrix B
-reg [63:0] matrix_A [0:63][0:63]; // Matrix A
-reg [63:0] matrix_B [0:63][0:63]; // Matrix B
-reg [63:0] result [0:63][0:63];   // Result matrix
-reg valid;
+parameter SIZE = 10;  // Matrix size
+
+reg [63:0] matrix_A [0:9][0:9]; // Matrix A
+reg [63:0] matrix_B [0:9][0:9]; // Matrix B
+reg [63:0] result [0:9][0:9];   // Result matrix
 wire multiplier_start;
 wire multiplier_done;
 
-// Matrix multiplication module instance
-MatrixMultiplier multiplier_inst (
+// MatrixMultiplier instantiation
+matrixmultiplier multiplier_inst (
     .clk(clk),
     .start(multiplier_start),
     .matrix_A(matrix_A),
@@ -79,80 +79,53 @@ MatrixMultiplier multiplier_inst (
     .done(multiplier_done)
 );
 
-integer row_index; // Index for the current row of the matrix being filled
-integer col_index; // Index for the current column of the matrix being filled
-integer resp_row;  // Index for the current row of the response
-integer resp_col;  // Index for the current column of the response
+integer row_index, col_index;
+
+assign multiplier_start = (cmd_val) && (cmd_opcode == CMD_MULT);
 
 always @(posedge clk or negedge rst_n) begin
-    if (rst_n) begin
-        state <= IDLE;
+    if (!rst_n) begin
         busy <= 1'b0;
-        valid <= 1'b0;
         resp_val <= 1'b0;
-        resp_data <= 64'd0;
-    end else begin
-        case (state)
-            IDLE:
-                if (cmd_val && (cmd_opcode == CMD_OPCODE)) begin
-                    input_A <= cmd_config_data;
-                    // Start filling matrix A
-                    row_index <= 0;
-                    col_index <= 0;
-                    state <= FILLING_A;
-                    busy <= 1'b1;
-                end
-            FILLING_A:
-                begin
-                    // Fill matrix_A with input data for matrix A
-                    matrix_A[row_index][col_index] <= input_A;
+        resp_data <= 64'b0;
+        row_index <= 10'b0;
+        col_index <= 10'b0;
+    end 
+    else if(cmd_val) begin
+        busy <= 1'b1;
+        case (cmd_opcode)
+            CMD_FILLA:
+                if (row_index < SIZE) begin
+                    matrix_A[row_index][col_index] <= cmd_config_data;
                     col_index <= col_index + 1;
                     if (col_index == SIZE) begin
-                        col_index <= 0;
+                        col_index <= 10'b0;
                         row_index <= row_index + 1;
-                        if (row_index == SIZE) begin
-                            // Reset indices for matrix B
-                            row_index <= 0;
-                            col_index <= 0;
-                            // Move to fill matrix B
-                            input_B <= cmd_config_data;
-                            state <= FILLING_B;
-                        end
                     end
-                    input_A <= cmd_config_data;
                 end
-            FILLING_B:
-                begin
-                    matrix_B[row_index][col_index] <= input_B;
+            CMD_FILLB: 
+                if (row_index < SIZE) begin
+                    matrix_B[row_index][col_index] <= cmd_config_data;
                     col_index <= col_index + 1;
                     if (col_index == SIZE) begin
-                        col_index <= 0;
+                        col_index <= 10'b0;
                         row_index <= row_index + 1;
-                        if (row_index == SIZE) begin
-                          // Start matrix multiplication computation
-                          multiplier_start <= 1;
-                          state <= RESPONDING;
-                          resp_row <= 0; // Initialize response row index
-                          resp_col <= 0; // Initialize response column index
-                        end
                     end
-                    input_B <= cmd_config_data;
                 end
-            RESPONDING:
-                begin
-                    if (multiplier_done && resp_rdy) begin
-                        // Send the entire result matrix
+            CMD_MULT:
+                col_index <= col_index;
+            CMD_READ:
+                if (multiplier_done) begin
+                    if (resp_rdy) begin
                         resp_val <= 1'b1;
-                        resp_data <= result[resp_row][resp_col];
-                        valid <= 1'b1;
-                        resp_col <= resp_col + 1;
-                        if (resp_col == SIZE) begin
-                            resp_col <= 0;
-                            resp_row <= resp_row + 1;
+                        resp_data <= result[row_index][col_index];
+                        col_index <= col_index + 1;
+                        if (col_index == SIZE) begin
+                            col_index <= 10'b0;
+                            row_index <= row_index + 1;
                         end
-                        // If all elements are sent, transition back to IDLE
-                        if ((resp_row == SIZE) && (resp_col == 0)) begin
-                            state <= IDLE;
+                        if (row_index == SIZE) begin
+                            resp_val <= 1'b0;
                             busy <= 1'b0;
                         end
                     end
@@ -162,3 +135,49 @@ always @(posedge clk or negedge rst_n) begin
 end
 
 endmodule
+
+module matrixmultiplier(
+    input wire clk,
+    input wire rst_n,
+    input wire start,
+    input wire [63:0] matrix_A [0:9][0:9], 
+    input wire [63:0] matrix_B [0:9][0:9], 
+    output reg [63:0] result [0:9][0:9],  
+    output reg done                          // Signal indicating computation completion
+);
+
+reg [63:0] partial_sum [0:9][0:9]; // Partial sum matrix
+integer i, j, k;
+
+// Reset done signal and result matrix
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        done <= 0;
+        for (i = 0; i < 10; i = i + 1) begin
+            for (j = 0; j < 10; j = j + 1) begin
+                result[i][j] <= 64'b0;
+                partial_sum[i][j] <= 64'b0;
+            end
+        end
+    end else if (start) begin
+        done <= 0;
+        for (i = 0; i < 10; i = i + 1) begin
+            for (j = 0; j < 10; j = j + 1) begin
+                partial_sum[i][j] <= 64'b0; // Initialize partial sums
+            end
+        end
+    end else if (!done) begin
+        for (i = 0; i < 10; i = i + 1) begin
+            for (j = 0; j < 10; j = j + 1) begin
+                for (k = 0; k < 10; k = k + 1) begin
+                    partial_sum[i][j] <= partial_sum[i][j] + matrix_A[i][k] * matrix_B[k][j];
+                end
+                result[i][j] <= partial_sum[i][j]; // Assign the computed result
+            end
+        end
+        done <= 1'b1; // Set done after the computation is complete
+    end
+end
+
+endmodule
+
