@@ -56,11 +56,11 @@ module tight_acc_iface(
 );
 
 // Command opcodes
-parameter CMD_FILLA = 6'd0;  // Command to fill Matrix A 
-parameter CMD_FILLB = 6'd1;  // Command to fill Matrix B
-parameter CMD_MULT =  6'd2;  // Command to start multiplication
-parameter CMD_READ =  6'd3;  // Command to read results
-parameter CMD_INIT =  6'd8;  // Command to read initialize matrix values
+parameter CMD_INIT =  6'd10;  // Command to read initialize matrix values
+parameter CMD_FILLA = 6'd11;  // Command to fill Matrix A 
+parameter CMD_FILLB = 6'd12;  // Command to fill Matrix B
+parameter CMD_MULT =  6'd25;  // Command to start multiplication
+parameter CMD_READ =  6'd13;  // Command to read results
 
 parameter SIZE = 10;  // Matrix size
 
@@ -77,7 +77,6 @@ wire multiplier_start;
 wire multiplier_done;
 
 reg [63:0] partial_sum [0:9][0:9]; // Partial sum matrix
-reg [63:0] temp;
 integer i, j, k;
 integer a, b, c;
 
@@ -99,10 +98,9 @@ always @(cmd_opcode) begin
             colB_index <= 4'b0;
             rowR_index <= 4'b0;
             colR_index <= 4'b0;
-            temp <= 64'b0;
             for (i = 0; i < 10; i = i + 1) begin
                 for (j = 0; j < 10; j = j + 1) begin
-                    result[i][j] <= 64'd50; //
+                    result[i][j] <= 64'b0; //
                     matrix_A[i][j] <= 64'b0;
                     matrix_B[i][j] <= 64'b0;
                     partial_sum[i][j] <= 64'b0;
@@ -139,9 +137,6 @@ always @(cmd_opcode) begin
             end
         end
     end
-end
-
-endmodule
 end
 
 endmodule
