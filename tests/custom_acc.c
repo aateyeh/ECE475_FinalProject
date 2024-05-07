@@ -31,30 +31,30 @@ static uint32_t Ap[NUM_WORDS] = {0x33221100,
 void _kernel_(uint32_t id, uint32_t core_num){
     // Setup and send data to the accelerator
     custom_acc_write(0,10,10); 
-    custom_acc_read(0,5);
-    //print64("Init Confirm",custom_acc_read(0,5));
-    for (uint32_t i = 0; i < 10; i++) {
-        for (uint32_t j = 0; j < 10; j++) {
+    //custom_acc_read(0,5);
+    //print64("Init Confirm",custom_acc_read(0,15));
+    for (uint32_t i = 0; i < 8; i++) {
+        for (uint32_t j = 0; j < 8; j++) {
             custom_acc_write(0,11, A_data[i][j]); 
-            custom_acc_read(0,5);
-            //print64("Fill A",custom_acc_read(0,5));
+            //custom_acc_read(0,5);
+            // print64("Fill A",custom_acc_read(0,15));
             custom_acc_write(0,12, B_data[i][j]); 
-            custom_acc_read(0,5);
-            //print64("Fill B",custom_acc_read(0,5));
+            //custom_acc_read(0,15);
+            // print64("Fill B",custom_acc_read(0,15));
         }
     }
 
     // Perform Multiplication
     custom_acc_write(0,25,0); 
-    custom_acc_read(0,5);
+    // custom_acc_read(0,5);
     //print64("Multiply Confirm",custom_acc_read(0,5));
     
     // Read Result
-      for (uint32_t i = 0; i < 10; i++) {
-        for (uint32_t j = 0; j < 10; j++) {
+      for (uint32_t i = 0; i < 8; i++) {
+        for (uint32_t j = 0; j < 8; j++) {
             custom_acc_write(0,13,0); 
-            custom_acc_read(0,13);
-            //print64("Result:",custom_acc_read(0,5));
+            //custom_acc_read(0,13);
+            print64("Result:",custom_acc_read(0,15));
         }
     }
 }
