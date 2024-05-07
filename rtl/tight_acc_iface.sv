@@ -34,14 +34,14 @@ module tight_acc_iface(
     input wire rst_n,
     // Command interface to receive "instructions" and configurations
     input wire cmd_val,               // New valid command
-    output reg busy,                  // Effectively behaves as cmd_rdy
+    output wire busy,                  // Effectively behaves as cmd_rdy
     input wire [5:0] cmd_opcode,      // Command operation code, 64 values
     input wire [63:0] cmd_config_data, // Payload of command if needed
 
     // Interface to respond to the core after the accelerator has processed data
-    output reg resp_val,
+    output wire resp_val,
     input wire resp_rdy,              // Whether the core is ready to take the data
-    output reg [63:0] resp_data,
+    output wire [63:0] resp_data,
 
     // Request interface to memory hierarchy
     input wire mem_req_rdy,           // Whether the network is ready to take the request
@@ -56,128 +56,97 @@ module tight_acc_iface(
 );
 
 // Command opcodes
-parameter CMD_MULT =  6'b000001;  // Command to load matrices and start multiplication
-parameter CMD_FILLA = 6'b000010;  // Command to read results
-parameter CMD_FILLB = 6'b000011;  // Command to read results
-parameter CMD_READ =  6'b000100;  // Command to read results
+parameter CMD_INIT =  6'd10;  // Command to read initialize matrix values
+parameter CMD_FILLA = 6'd11;  // Command to fill Matrix A 
+parameter CMD_FILLB = 6'd12;  // Command to fill Matrix B
+parameter CMD_MULT =  6'd25;  // Command to start multiplication
+parameter CMD_RESULT =  6'd13;  // Command to read results
+parameter CMD_READ = 6'd15;
 
-parameter SIZE = 10;  // Matrix size
+parameter SIZE = 8;  // Matrix size
 
-reg [63:0] matrix_A [0:9][0:9]; // Matrix A
-reg [63:0] matrix_B [0:9][0:9]; // Matrix B
-reg [63:0] result [0:9][0:9];   // Result matrix
+reg [63:0] matrix_A [0:7][0:7]; // Matrix A
+reg [63:0] matrix_B [0:7][0:7]; // Matrix B
+reg [63:0] result [0:7][0:7];   // Result matrix
+reg [3:0] rowA_index;
+reg [3:0] colA_index;
+reg [3:0] rowB_index;
+reg [3:0] colB_index;
+reg [3:0] rowR_index;
+reg [3:0] colR_index;
 wire multiplier_start;
 wire multiplier_done;
 
-// MatrixMultiplier instantiation
-matrixmultiplier multiplier_inst (
-    .clk(clk),
-    .start(multiplier_start),
-    .matrix_A(matrix_A),
-    .matrix_B(matrix_B),
-    .result(result),
-    .done(multiplier_done)
-);
-
-integer row_index, col_index;
-
-assign multiplier_start = (cmd_val) && (cmd_opcode == CMD_MULT);
-
-always @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        busy <= 1'b0;
-        resp_val <= 1'b0;
-        resp_data <= 64'b0;
-        row_index <= 10'b0;
-        col_index <= 10'b0;
-    end 
-    else if(cmd_val) begin
-        busy <= 1'b1;
-        case (cmd_opcode)
-            CMD_FILLA:
-                if (row_index < SIZE) begin
-                    matrix_A[row_index][col_index] <= cmd_config_data;
-                    col_index <= col_index + 1;
-                    if (col_index == SIZE) begin
-                        col_index <= 10'b0;
-                        row_index <= row_index + 1;
-                    end
-                end
-            CMD_FILLB: 
-                if (row_index < SIZE) begin
-                    matrix_B[row_index][col_index] <= cmd_config_data;
-                    col_index <= col_index + 1;
-                    if (col_index == SIZE) begin
-                        col_index <= 10'b0;
-                        row_index <= row_index + 1;
-                    end
-                end
-            CMD_MULT:
-                col_index <= col_index;
-            CMD_READ:
-                if (multiplier_done) begin
-                    if (resp_rdy) begin
-                        resp_val <= 1'b1;
-                        resp_data <= result[row_index][col_index];
-                        col_index <= col_index + 1;
-                        if (col_index == SIZE) begin
-                            col_index <= 10'b0;
-                            row_index <= row_index + 1;
-                        end
-                        if (row_index == SIZE) begin
-                            resp_val <= 1'b0;
-                            busy <= 1'b0;
-                        end
-                    end
-                end
-        endcase
-    end
-end
-
-endmodule
-
-module matrixmultiplier(
-    input wire clk,
-    input wire rst_n,
-    input wire start,
-    input wire [63:0] matrix_A [0:9][0:9], 
-    input wire [63:0] matrix_B [0:9][0:9], 
-    output reg [63:0] result [0:9][0:9],  
-    output reg done                          // Signal indicating computation completion
-);
-
-reg [63:0] partial_sum [0:9][0:9]; // Partial sum matrix
+reg [63:0] partial_sum [0:7][0:7]; // Partial sum matrix
 integer i, j, k;
+integer a, b, c;
 
-// Reset done signal and result matrix
-always @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        done <= 0;
-        for (i = 0; i < 10; i = i + 1) begin
-            for (j = 0; j < 10; j = j + 1) begin
-                result[i][j] <= 64'b0;
-                partial_sum[i][j] <= 64'b0;
-            end
-        end
-    end else if (start) begin
-        done <= 0;
-        for (i = 0; i < 10; i = i + 1) begin
-            for (j = 0; j < 10; j = j + 1) begin
-                partial_sum[i][j] <= 64'b0; // Initialize partial sums
-            end
-        end
-    end else if (!done) begin
-        for (i = 0; i < 10; i = i + 1) begin
-            for (j = 0; j < 10; j = j + 1) begin
-                for (k = 0; k < 10; k = k + 1) begin
-                    partial_sum[i][j] <= partial_sum[i][j] + matrix_A[i][k] * matrix_B[k][j];
+// FILL ME
+assign busy = 1'b0;
+assign mem_req_val = 1'b0;
+assign mem_req_transid = 6'b0;
+assign mem_req_addr = 40'd0;
+// FOO implementation, respond untouched every command
+assign resp_val = cmd_val && (cmd_opcode == CMD_RESULT);
+assign resp_data = result[4][4];
+
+always @(cmd_opcode) begin
+    if(cmd_val) begin
+        if(cmd_opcode == CMD_INIT) begin
+            rowA_index <= 4'd0;
+            colA_index <= 4'd0;
+            rowB_index <= 4'd0;
+            colB_index <= 4'd0;
+            rowR_index <= 4'd0;
+            colR_index <= 4'd0;
+            for (i = 0; i < 8; i = i + 1) begin
+                for (j = 0; j < 8; j = j + 1) begin
+                    result[i][j] <= 64'd0; //
+                    matrix_A[i][j] <= 64'd0;
+                    matrix_B[i][j] <= 64'd0;
+                    partial_sum[i][j] <= 64'd7;
                 end
-                result[i][j] <= partial_sum[i][j]; // Assign the computed result
+            end
+        end else if(cmd_opcode == CMD_FILLA) begin
+            /*matrix_A[rowA_index][colA_index] <= cmd_config_data;
+            colA_index <= colA_index + 1;
+            if (colA_index == 4'd7) begin
+                colA_index <= 4'd0;
+                rowA_index <= rowA_index + 1;
+            end*/
+            for (i = 0; i < 8; i = i + 1) begin
+                for (j = 0; j < 8; j = j + 1) begin
+                    matrix_A[i][j] <= 64'd4;
+                end
+            end
+        end else if (cmd_opcode == CMD_FILLB) begin
+            /*matrix_B[rowB_index][colB_index] <= cmd_config_data;
+            colB_index <= colB_index + 1;
+            if (colB_index == 4'd7) begin
+                colB_index <= 4'd0;
+                rowB_index <= rowB_index + 1;
+            end*/
+            for (i = 0; i < 8; i = i + 1) begin
+                for (j = 0; j < 8; j = j + 1) begin
+                    matrix_B[i][j] <= 64'd5;
+                end
+            end
+        end else if (cmd_opcode == CMD_MULT) begin
+            for (a = 0; a < 8; a = a + 1) begin
+                for (b = 0; b < 8; b = b + 1) begin
+                    for (c = 0; c < 8; c = c + 1) begin
+                        result[a][b] = result[a][b] + (matrix_A[a][c] * matrix_B[c][b]);
+                    end
+                end
+            end
+        end else if (cmd_opcode == CMD_RESULT && resp_rdy) begin
+            colR_index <= colR_index + 1;
+            if (colR_index == 4'd7) begin
+                colR_index <= 4'd0;
+                rowR_index <= rowR_index + 1;
             end
         end
-        done <= 1'b1; // Set done after the computation is complete
     end
 end
 
 endmodule
-
