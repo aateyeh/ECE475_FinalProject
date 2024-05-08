@@ -60,7 +60,7 @@ parameter CMD_INIT =  6'd10;  // Command to read initialize matrix values
 parameter CMD_FILLA = 6'd11;  // Command to fill Matrix A 
 parameter CMD_FILLB = 6'd12;  // Command to fill Matrix B
 parameter CMD_MULT =  6'd25;  // Command to start multiplication
-parameter CMD_READ =  6'd13;  // Command to read results
+parameter CMD_RESULT =  6'd13;  // Command to read results
 
 parameter SIZE = 10;  // Matrix size
 
@@ -73,10 +73,7 @@ reg [3:0] rowB_index;
 reg [3:0] colB_index;
 reg [3:0] rowR_index;
 reg [3:0] colR_index;
-wire multiplier_start;
-wire multiplier_done;
 
-reg [63:0] partial_sum [0:9][0:9]; // Partial sum matrix
 integer i, j, k;
 integer a, b, c;
 
@@ -86,53 +83,51 @@ assign mem_req_val = 1'b0;
 assign mem_req_transid = 6'b0;
 assign mem_req_addr = 40'd0;
 // FOO implementation, respond untouched every command
-assign resp_val = cmd_val;
-assign resp_data = result[rowR_index][colR_index];
+assign resp_val = cmd_val; // && (cmd_opcode == CMD_RESULT);
+assign resp_data = cmd_opcode;
 
 always @(cmd_opcode) begin
     if(cmd_val) begin
         if(cmd_opcode == CMD_INIT) begin
-            rowA_index <= 4'b0;
-            colA_index <= 4'b0;
-            rowB_index <= 4'b0;
-            colB_index <= 4'b0;
-            rowR_index <= 4'b0;
-            colR_index <= 4'b0;
+            rowA_index <= 4'd0;
+            colA_index <= 4'd0;
+            rowB_index <= 4'd0;
+            colB_index <= 4'd0;
+            rowR_index <= 4'd0;
+            colR_index <= 4'd0;
             for (i = 0; i < 10; i = i + 1) begin
                 for (j = 0; j < 10; j = j + 1) begin
-                    result[i][j] <= 64'b0; //
-                    matrix_A[i][j] <= 64'b0;
-                    matrix_B[i][j] <= 64'b0;
-                    partial_sum[i][j] <= 64'b0;
+                    result[i][j] <= 64'd0; 
+                    matrix_A[i][j] <= 64'd0;
+                    matrix_B[i][j] <= 64'd0;
                 end
             end
         end else if(cmd_opcode == CMD_FILLA) begin
             matrix_A[rowA_index][colA_index] <= cmd_config_data;
             colA_index <= colA_index + 1;
             if (colA_index == 4'd9) begin
-                colA_index <= 4'b0;
+                colA_index <= 4'd0;
                 rowA_index <= rowA_index + 1;
             end
         end else if (cmd_opcode == CMD_FILLB) begin
             matrix_B[rowB_index][colB_index] <= cmd_config_data;
             colB_index <= colB_index + 1;
             if (colB_index == 4'd9) begin
-                colB_index <= 4'b0;
+                colB_index <= 4'd0;
                 rowB_index <= rowB_index + 1;
             end
         end else if (cmd_opcode == CMD_MULT) begin
             for (a = 0; a < 10; a = a + 1) begin
                 for (b = 0; b < 10; b = b + 1) begin
                     for (c = 0; c < 10; c = c + 1) begin
-                        partial_sum[a][b] <= partial_sum[a][b] + (matrix_A[a][c] * matrix_B[c][b]);
+                        result[a][b] = result[a][b] + (matrix_A[a][c] * matrix_B[c][b]);
                     end
-                    result[a][b] <= partial_sum[a][b]; // 
                 end
-            end   
-        end else if (cmd_opcode == CMD_READ) begin
+            end
+        end else if (cmd_opcode == CMD_RESULT && resp_rdy) begin
             colR_index <= colR_index + 1;
             if (colR_index == 4'd9) begin
-                colR_index <= 4'b0;
+                colR_index <= 4'd0;
                 rowR_index <= rowR_index + 1;
             end
         end
