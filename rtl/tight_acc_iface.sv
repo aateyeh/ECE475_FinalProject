@@ -77,16 +77,16 @@ reg [3:0] colR_index;
 integer i, j, k;
 integer a, b, c;
 
-// FILL ME
 assign busy = 1'b0;
 assign mem_req_val = 1'b0;
 assign mem_req_transid = 6'b0;
 assign mem_req_addr = 40'd0;
-// FOO implementation, respond untouched every command
-assign resp_val = cmd_val; // && (cmd_opcode == CMD_RESULT);
+// rdy/val signals
+assign resp_val = cmd_val && (cmd_opcode == CMD_RESULT);
 assign resp_data = cmd_opcode;
 
 always @(cmd_opcode) begin
+   // switch statement to determine operation based on opcode
     if(cmd_val) begin
         if(cmd_opcode == CMD_INIT) begin
             rowA_index <= 4'd0;
